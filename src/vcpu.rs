@@ -1,20 +1,17 @@
 use aarch64_cpu::registers::*;
-use core::arch::global_asm;
-use core::marker::PhantomData;
 use tock_registers::interfaces::*;
 
 use axaddrspace::{GuestPhysAddr, HostPhysAddr};
 use axerrno::AxResult;
 use axvcpu::AxVCpuExitReason;
 
-use super::context_frame::VmContext;
-use super::exception_utils::*;
-use super::sync::data_abort_handler;
-use super::ContextFrame;
-use super::{do_register_lower_aarch64_irq_handler, do_register_lower_aarch64_synchronous_handler};
-use crate::AxVMHal;
+use crate::context_frame::VmContext;
+use crate::exception_utils::*;
+use crate::sync::data_abort_handler;
+use crate::ContextFrame;
+use crate::{do_register_lower_aarch64_irq_handler, do_register_lower_aarch64_synchronous_handler};
 
-global_asm!(include_str!("entry.S"));
+core::arch::global_asm!(include_str!("entry.S"));
 
 /// (v)CPU register state that must be saved or restored when entering/exiting a VM or switching
 /// between VMs.
@@ -39,19 +36,18 @@ impl VmCpuRegisters {
 
 /// A virtual CPU within a guest
 #[derive(Clone, Debug)]
-pub struct VCpu<H: AxVMHal> {
-    /// Vcpu context
+pub struct Aarch64VCpu {
+    // DO NOT modify `guest_regs` and `host_stack_top` and their order unless you do know what you are doing!
+    // DO NOT add anything before or between them unless you do know what you are doing!
     ctx: ContextFrame,
     host_stack_top: u64,
     system_regs: VmContext,
     vcpu_id: usize,
-
-    marker: PhantomData<H>,
 }
 
 pub type AxArchVCpuConfig = VmCpuRegisters;
 
-impl<H: AxVMHal> axvcpu::AxArchVCpu for VCpu<H> {
+impl axvcpu::AxArchVCpu for Aarch64VCpu {
     type CreateConfig = ();
 
     type SetupConfig = ();
@@ -62,7 +58,6 @@ impl<H: AxVMHal> axvcpu::AxArchVCpu for VCpu<H> {
             host_stack_top: 0,
             system_regs: VmContext::default(),
             vcpu_id: 0, // need to pass a parameter!!!!
-            marker: PhantomData,
         })
     }
 
@@ -101,7 +96,7 @@ impl<H: AxVMHal> axvcpu::AxArchVCpu for VCpu<H> {
 }
 
 // Private function
-impl<H: AxVMHal> VCpu<H> {
+impl Aarch64VCpu {
     #[inline(never)]
     fn run_guest(&mut self) {
         unsafe {
@@ -161,7 +156,7 @@ impl<H: AxVMHal> VCpu<H> {
                 panic!(
                     "handler not presents for EC_{} @ipa 0x{:x}, @pc 0x{:x}, @esr 0x{:x}, @sctlr_el1 0x{:x}, @vttbr_el2 0x{:x}, @vtcr_el2: {:#x} hcr: {:#x} ctx:{}",
                     exception_class_value(),
-                    exception_fault_addr(),
+                    exception_fault_addr()?,
                     (*ctx).exception_pc(),
                     exception_esr(),
                     SCTLR_EL1.get() as usize,

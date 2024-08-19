@@ -1,18 +1,31 @@
-use aarch64_cpu::registers::*;
 use core::arch::asm;
 use core::fmt::Formatter;
 
-use axhal::arch::TrapFrame;
+use aarch64_cpu::registers::*;
 
+/// A struct representing the AArch64 CPU context frame.
+///
+/// This context frame includes the general-purpose registers (GPRs),
+/// the stack pointer (SP), the exception link register (ELR), and
+/// the saved program status register (SPSR).
+///
+/// The `#[repr(C)]` attribute ensures that the struct has a C-compatible
+/// memory layout, which is important when interfacing with hardware or
+/// other low-level components.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Aarch64ContextFrame {
+    /// An array of 31 `u64` values representing the general-purpose registers.
     pub gpr: [u64; 31],
+    /// The stack pointer.
     pub sp: u64,
+    /// The exception link register, which stores the return address after an exception.
     pub elr: u64,
+    /// The saved program status register, which holds the state of the program at the time of an exception.
     pub spsr: u64,
 }
 
+/// Implementations of [`fmt::Display`] for [`Aarch64ContextFrame`].
 impl core::fmt::Display for Aarch64ContextFrame {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), core::fmt::Error> {
         for i in 0..31 {
@@ -28,29 +41,10 @@ impl core::fmt::Display for Aarch64ContextFrame {
     }
 }
 
-impl From<Aarch64ContextFrame> for TrapFrame {
-    fn from(item: Aarch64ContextFrame) -> Self {
-        TrapFrame {
-            r: item.gpr,
-            usp: item.sp,
-            elr: item.elr,
-            spsr: item.spsr,
-        }
-    }
-}
-
-impl From<TrapFrame> for Aarch64ContextFrame {
-    fn from(item: TrapFrame) -> Self {
-        Aarch64ContextFrame {
-            gpr: item.r,
-            sp: item.usp,
-            elr: item.elr,
-            spsr: item.spsr,
-        }
-    }
-}
-
 impl Aarch64ContextFrame {
+    /// Returns the default context frame.
+    ///
+    /// The default state sets the SPSR to mask all exceptions and sets the mode to EL1h.
     pub fn default() -> Aarch64ContextFrame {
         Aarch64ContextFrame {
             gpr: [0; 31],
@@ -65,6 +59,14 @@ impl Aarch64ContextFrame {
         }
     }
 
+    /// Creates a new context frame with a specific program counter, stack pointer, and argument.
+    ///
+    /// Sets the SPSR to mask all exceptions and sets the mode to EL1h by default.
+    /// # Arguments
+    ///
+    /// * `pc` - The initial program counter (PC).
+    /// * `sp` - The initial stack pointer (SP).
+    /// * `arg` - The argument to be passed in register x0.
     pub fn new(pc: usize, sp: usize, arg: usize) -> Self {
         let mut r = Aarch64ContextFrame {
             gpr: [0; 31],
@@ -81,35 +83,73 @@ impl Aarch64ContextFrame {
         r
     }
 
+    /// Returns the exception program counter (ELR).
     pub fn exception_pc(&self) -> usize {
         self.elr as usize
     }
 
+    /// Sets the exception program counter (ELR).
+    ///
+    /// # Arguments
+    ///
+    /// * `pc` - The new program counter value.
     pub fn set_exception_pc(&mut self, pc: usize) {
         self.elr = pc as u64;
     }
 
+    /// Returns the stack pointer (SP).
     pub fn stack_pointer(&self) -> usize {
         self.sp as usize
     }
 
+    /// Sets the stack pointer (SP).
+    ///
+    /// # Arguments
+    ///
+    /// * `sp` - The new stack pointer value.
     pub fn set_stack_pointer(&mut self, sp: usize) {
         self.sp = sp as u64;
     }
 
+    /// Sets the argument in register x0.
+    ///
+    /// # Arguments
+    ///
+    /// * `arg` - The argument to be passed in register x0.
     pub fn set_argument(&mut self, arg: usize) {
         self.gpr[0] = arg as u64;
     }
 
+    /// Sets the value of a general-purpose register.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The index of the general-purpose register (0 to 30).
+    /// * `val` - The value to be set in the register.
     pub fn set_gpr(&mut self, index: usize, val: usize) {
         self.gpr[index] = val as u64;
     }
 
+    /// Returns the value of a general-purpose register.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The index of the general-purpose register (0 to 30).
+    ///
+    /// # Returns
+    /// The value stored in the specified register.
     pub fn gpr(&self, index: usize) -> usize {
         self.gpr[index] as usize
     }
 }
 
+/// Represents the VM context for a guest virtual machine in a hypervisor environment.
+///
+/// The `VmContext` structure contains various registers and states needed to manage
+/// and restore the context of a virtual machine (VM). This includes timer registers,
+/// system control registers, exception registers, and hypervisor-specific registers.
+///
+/// The structure is aligned to 16 bytes to ensure proper memory alignment for efficient access.
 #[repr(C)]
 #[repr(align(16))]
 #[derive(Debug, Clone, Copy, Default)]
@@ -165,6 +205,10 @@ pub struct VmContext {
 }
 
 impl VmContext {
+    /// Creates a new `VmContext` with all registers initialized to zero.
+    ///
+    /// This method returns a `VmContext` instance with default values,
+    /// ensuring that all fields are set to zero.
     pub fn default() -> VmContext {
         VmContext {
             // generic timer
@@ -218,6 +262,10 @@ impl VmContext {
         }
     }
 
+    /// Resets the VM context by setting all registers to zero.
+    ///
+    /// This method allows the `VmContext` instance to be reused by resetting
+    /// its state to the default values (all zeros).
     pub fn reset(&mut self) {
         self.cntvoff_el2 = 0;
         self.cntp_cval_el0 = 0;
@@ -256,6 +304,10 @@ impl VmContext {
         self.hpfar_el2 = 0;
     }
 
+    /// Stores the current values of all relevant registers into the `VmContext` structure.
+    ///
+    /// This method uses inline assembly to read the values of various system registers
+    /// and stores them in the corresponding fields of the `VmContext` structure.
     pub fn ext_regs_store(&mut self) {
         unsafe {
             asm!("mrs {0}, CNTVOFF_EL2", out(reg) self.cntvoff_el2);
@@ -298,6 +350,14 @@ impl VmContext {
         // println!("save sctlr {:x}", self.sctlr_el1);
     }
 
+    /// Restores the values of all relevant system registers from the `VmContext` structure.
+    ///
+    /// This method uses inline assembly to write the values stored in the `VmContext` structure
+    /// back to the system registers. This is essential for restoring the state of a virtual machine
+    /// or thread during context switching.
+    ///
+    /// Each system register is restored with its corresponding value from the `VmContext`, ensuring
+    /// that the virtual machine or thread resumes execution with the correct context.
     pub fn ext_regs_restore(&self) {
         unsafe {
             asm!("msr CNTV_CVAL_EL0, {0}", in(reg) self.cntv_cval_el0);

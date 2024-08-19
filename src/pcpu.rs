@@ -2,30 +2,22 @@ use aarch64_cpu::registers::*;
 
 use axerrno::AxResult;
 
-use crate::percpu::AxVMArchPerCpu;
-use crate::AxVMHal;
+use axvcpu::AxVMArchPerCpu;
 
 /// Per-CPU data. A pointer to this struct is loaded into TP when a CPU starts. This structure
 #[repr(C)]
 #[repr(align(4096))]
-pub struct PerCpu<H: AxVMHal> {
+pub struct Aarch64PerCpu {
     //stack_top_addr has no use yet?
     /// per cpu id
     pub cpu_id: usize,
     /// context address of this cpu
     pub ctx: Option<usize>,
-
-    marker: core::marker::PhantomData<H>,
 }
 
-impl<H: AxVMHal + 'static> AxVMArchPerCpu for PerCpu<H> {
+impl AxVMArchPerCpu for Aarch64PerCpu {
     fn new(cpu_id: usize) -> AxResult<Self> {
-        Ok(Self {
-            cpu_id: cpu_id,
-            ctx: None,
-
-            marker: core::marker::PhantomData,
-        })
+        Ok(Self { cpu_id, ctx: None })
     }
 
     fn is_enabled(&self) -> bool {
