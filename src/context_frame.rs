@@ -120,26 +120,52 @@ impl Aarch64ContextFrame {
         self.gpr[0] = arg as u64;
     }
 
-    /// Sets the value of a general-purpose register.
+    /// Sets the value of a general-purpose register (GPR).
     ///
     /// # Arguments
     ///
-    /// * `index` - The index of the general-purpose register (0 to 30).
+    /// * `index` - The index of the general-purpose register (0 to 31).
     /// * `val` - The value to be set in the register.
+    ///
+    /// # Behavior
+    /// - If `index` is between 0 and 30, the register at the specified index is set to `val`.
+    /// - If `index` is 31, the operation is ignored, as it corresponds to the zero register
+    ///   (`wzr` or `xzr` in AArch64), which always reads as zero and cannot be modified.
+    ///
+    /// # Panics
+    /// Panics if the provided `index` is outside the range 0 to 31.
     pub fn set_gpr(&mut self, index: usize, val: usize) {
-        self.gpr[index] = val as u64;
+        match index {
+            0..=30 => self.gpr[index] = val as u64,
+            31 => warn!("Try to set zero register at index [{index}] as {val}"),
+            _ => {
+                panic!("Invalid general-purpose register index {index}")
+            }
+        }
     }
 
-    /// Returns the value of a general-purpose register.
+    /// Retrieves the value of a general-purpose register (GPR).
     ///
     /// # Arguments
     ///
-    /// * `index` - The index of the general-purpose register (0 to 30).
+    /// * `index` - The index of the general-purpose register (0 to 31).
     ///
     /// # Returns
     /// The value stored in the specified register.
+    ///
+    /// # Panics
+    /// Panics if the provided `index` is not in the range 0 to 31.
+    ///
+    /// # Notes
+    /// * For `index` 31, this method returns 0, as it corresponds to the zero register (`wzr` or `xzr` in AArch64).
     pub fn gpr(&self, index: usize) -> usize {
-        self.gpr[index] as usize
+        match index {
+            0..=30 => self.gpr[index] as usize,
+            31 => 0,
+            _ => {
+                panic!("Invalid general-purpose register index {index}")
+            }
+        }
     }
 }
 

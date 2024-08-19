@@ -106,13 +106,7 @@ fn translate_far_to_hpfar(far: usize) -> AxResult<usize> {
     let tmp = PAR_EL1.get();
     PAR_EL1.set(par);
     if (tmp & PAR_EL1::F::TranslationAborted.value) != 0 {
-        ax_err!(
-            BadState,
-            alloc::format!(
-                "PAR_EL1::F::TranslationAborted value {}",
-                tmp & PAR_EL1::F::TranslationAborted.value
-            )
-        )
+        ax_err!(BadState, "PAR_EL1::F::TranslationAborted value")
     } else {
         Ok(par_to_far(tmp) as usize)
     }

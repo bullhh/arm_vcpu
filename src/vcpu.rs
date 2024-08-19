@@ -1,12 +1,16 @@
-use aarch64_cpu::registers::*;
-use tock_registers::interfaces::*;
+use aarch64_cpu::registers::{
+    Readable, CNTHCTL_EL2, ESR_EL2, HCR_EL2, SCTLR_EL1, SPSR_EL1, VTCR_EL2, VTTBR_EL2,
+};
+use tock_registers::interfaces::ReadWriteable;
 
 use axaddrspace::{GuestPhysAddr, HostPhysAddr};
 use axerrno::AxResult;
 use axvcpu::AxVCpuExitReason;
 
 use crate::context_frame::VmContext;
-use crate::exception_utils::*;
+use crate::exception_utils::{
+    exception_class, exception_class_value, exception_esr, exception_fault_addr,
+};
 use crate::sync::data_abort_handler;
 use crate::ContextFrame;
 use crate::{do_register_lower_aarch64_irq_handler, do_register_lower_aarch64_synchronous_handler};
@@ -134,8 +138,8 @@ impl Aarch64VCpu {
     }
 
     fn vmexit_handler(&mut self) -> AxResult<AxVCpuExitReason> {
-        debug!(
-            "enter lower_aarch64_synchronous esr:{:#x} ctx:{:#x?}",
+        trace!(
+            "Aarch64VCpu vmexit_handler() esr:{:#x} ctx:{:#x?}",
             exception_class_value(),
             self.ctx
         );
@@ -146,10 +150,11 @@ impl Aarch64VCpu {
         match exception_class() {
             Some(ESR_EL2::EC::Value::DataAbortLowerEL) => return data_abort_handler(ctx),
             Some(ESR_EL2::EC::Value::HVC64) => {
-                debug!("hvc call: {:#x?}", ctx);
                 return Ok(AxVCpuExitReason::Hypercall {
-                    nr: 0,
-                    args: [0, 0, 0, 0, 0, 0],
+                    nr: ESR_EL2.read(ESR_EL2::ISS),
+                    args: [
+                        ctx.gpr[0], ctx.gpr[1], ctx.gpr[2], ctx.gpr[3], ctx.gpr[4], ctx.gpr[5],
+                    ],
                 });
             }
             _ => {

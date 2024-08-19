@@ -1,7 +1,6 @@
 #![no_std]
 #![feature(naked_functions)]
 
-extern crate alloc;
 #[macro_use]
 extern crate log;
 

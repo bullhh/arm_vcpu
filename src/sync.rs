@@ -6,7 +6,11 @@ use crate::ContextFrame;
 
 pub fn data_abort_handler(context_frame: &mut ContextFrame) -> AxResult<AxVCpuExitReason> {
     let address = exception_fault_addr()?;
-    debug!("data fault addr {:?}, esr: 0x{:x}", address, exception_esr());
+    debug!(
+        "data fault addr {:?}, esr: 0x{:x}",
+        address,
+        exception_esr()
+    );
 
     let width = exception_data_abort_access_width();
     let is_write = exception_data_abort_access_is_write();
