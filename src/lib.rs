@@ -12,9 +12,11 @@ mod context_frame;
 mod exception_utils;
 mod exception;
 mod pcpu;
+mod registers;
 mod vcpu;
 
 pub use self::pcpu::Aarch64PerCpu;
+pub use self::registers::{emu_register_add, emu_register_handle_read, emu_register_handle_write};
 pub use self::vcpu::{Aarch64VCpu, Aarch64VCpuCreateConfig};
 
 /// context frame for aarch64
