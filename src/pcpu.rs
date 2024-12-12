@@ -1,4 +1,4 @@
-use core::marker::PhantomData;
+use core::{cell::OnceCell, marker::PhantomData};
 
 use aarch64_cpu::registers::*;
 use tock_registers::interfaces::ReadWriteable;
@@ -10,16 +10,20 @@ use axvcpu::{AxArchPerCpu, AxVCpuHal};
 #[repr(C)]
 #[repr(align(4096))]
 pub struct Aarch64PerCpu<H: AxVCpuHal> {
-    //stack_top_addr has no use yet?
     /// per cpu id
     pub cpu_id: usize,
-    /// context address of this cpu
-    pub ctx: Option<usize>,
     _phantom: PhantomData<H>,
 }
 
 #[percpu::def_percpu]
 static ORI_EXCEPTION_VECTOR_BASE: usize = 0;
+
+/// IRQ handler registered by underlying host OS during per-cpu initialization,
+/// for dispatching IRQs to the host OS.
+///
+/// Set `IRQ_HANDLER` as per-cpu variable to avoid the need of `OnceLock`.
+#[percpu::def_percpu]
+pub static IRQ_HANDLER: OnceCell<&(dyn Fn() + Send + Sync)> = OnceCell::new();
 
 extern "C" {
     fn exception_vector_base_vcpu();
@@ -27,9 +31,13 @@ extern "C" {
 
 impl<H: AxVCpuHal> AxArchPerCpu for Aarch64PerCpu<H> {
     fn new(cpu_id: usize) -> AxResult<Self> {
+        // Register IRQ handler for this CPU.
+        let _ = unsafe { IRQ_HANDLER.current_ref_mut_raw() }
+            .set(&|| H::irq_hanlder())
+            .map(|_| {});
+
         Ok(Self {
             cpu_id,
-            ctx: None,
             _phantom: PhantomData,
         })
     }

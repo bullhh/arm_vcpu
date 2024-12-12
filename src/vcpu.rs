@@ -57,7 +57,7 @@ pub struct VmCpuRegisters {
 /// A virtual CPU within a guest
 #[repr(C)]
 #[derive(Debug)]
-pub struct Aarch64VCpu {
+pub struct Aarch64VCpu<H: AxVCpuHal> {
     // DO NOT modify `guest_regs` and `host_stack_top` and their order unless you do know what you are doing!
     // DO NOT add anything before or between them unless you do know what you are doing!
     ctx: TrapFrame,
@@ -65,6 +65,7 @@ pub struct Aarch64VCpu {
     guest_system_regs: GuestSystemRegisters,
     /// The MPIDR_EL1 value for the vCPU.
     mpidr: u64,
+    _phantom: PhantomData<H>,
 }
 
 /// Configuration for creating a new `Aarch64VCpu`
@@ -76,7 +77,7 @@ pub struct Aarch64VCpuCreateConfig {
     pub mpidr_el1: u64,
 }
 
-impl axvcpu::AxArchVCpu for Aarch64VCpu {
+impl<H: AxVCpuHal> axvcpu::AxArchVCpu for Aarch64VCpu<H> {
     type CreateConfig = Aarch64VCpuCreateConfig;
 
     type SetupConfig = ();
@@ -87,6 +88,7 @@ impl axvcpu::AxArchVCpu for Aarch64VCpu {
             host_stack_top: 0,
             guest_system_regs: GuestSystemRegisters::default(),
             mpidr: config.mpidr_el1,
+            _phantom: PhantomData,
         })
     }
 
@@ -136,10 +138,14 @@ impl axvcpu::AxArchVCpu for Aarch64VCpu {
     fn set_gpr(&mut self, idx: usize, val: usize) {
         self.ctx.set_gpr(idx, val);
     }
+
+    fn inject_interrupt(&mut self, vector: usize) -> AxResult {
+        Ok(())
+    }
 }
 
 // Private function
-impl Aarch64VCpu {
+impl<H: AxVCpuHal> Aarch64VCpu<H> {
     fn init_hv(&mut self) {
         self.ctx.spsr = (SPSR_EL1::M::EL1h
             + SPSR_EL1::I::Masked
@@ -168,12 +174,11 @@ impl Aarch64VCpu {
         .into();
         self.guest_system_regs.hcr_el2 = (HCR_EL2::VM::Enable
             + HCR_EL2::RW::EL1IsAarch64
-            // + HCR_EL2::IMO::EnableVirtualIRQ
-            // + HCR_EL2::FMO::EnableVirtualFIQ
-            + HCR_EL2::TSC::EnableTrapEl1SmcToEl2)
+            + HCR_EL2::IMO::EnableVirtualIRQ
+            + HCR_EL2::FMO::EnableVirtualFIQ
+            + HCR_EL2::TSC::EnableTrapEl1SmcToEl2
+            + HCR_EL2::RW::EL1IsAarch64)
             .into();
-        self.guest_system_regs.cnthctl_el2 =
-            (CNTHCTL_EL2::EL1PCEN::CLEAR + CNTHCTL_EL2::EL1PCTEN::CLEAR).into();
         // self.system_regs.hcr_el2 |= 1<<27;
         // + HCR_EL2::IMO::EnableVirtualIRQ).into();
         // trap el1 smc to el2
@@ -200,7 +205,7 @@ impl Aarch64VCpu {
 }
 
 /// Private functions related to vcpu runtime control flow.
-impl Aarch64VCpu {
+impl<H: AxVCpuHal> Aarch64VCpu<H> {
     /// Save host context and run guest.
     ///
     /// When a VM-Exit happens when guest's vCpu is running,
@@ -228,7 +233,13 @@ impl Aarch64VCpu {
         );
 
         // the dummy return value, the real return value is in x0 when `return_run_guest` returns
-        0
+        let exit_reason: usize;
+        core::arch::asm!(
+            "mov {}, x0",
+            out(reg) exit_reason,
+            options(nostack)
+        );
+        exit_reason
     }
 
     /// Restores guest system control registers.
@@ -282,7 +293,7 @@ impl Aarch64VCpu {
         match exit_reason {
             TrapKind::Synchronous => handle_exception_sync(&mut self.ctx),
             TrapKind::Irq => Ok(AxVCpuExitReason::ExternalInterrupt {
-                vector: axhal::irq::fetch_irq() as _,
+                vector: H::irq_fetch() as _,
             }),
             _ => panic!("Unhandled exception {:?}", exit_reason),
         }
