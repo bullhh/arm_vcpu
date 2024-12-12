@@ -9,7 +9,8 @@ use crate::exception_utils::{
     exception_data_abort_access_reg, exception_data_abort_access_reg_width,
     exception_data_abort_access_width, exception_data_abort_handleable,
     exception_data_abort_is_permission_fault, exception_data_abort_is_translate_fault,
-    exception_esr, exception_fault_addr, exception_next_instruction_step,
+    exception_esr, exception_fault_addr, exception_next_instruction_step, exception_sysreg_addr,
+    exception_sysreg_direction_write, exception_sysreg_gpr,
 };
 use crate::TrapFrame;
 
@@ -94,6 +95,7 @@ pub fn handle_exception_sync(ctx: &mut TrapFrame) -> AxResult<AxVCpuExitReason> 
                 ],
             })
         }
+        Some(ESR_EL2::EC::Value::TrappedMsrMrs) => handle_system_register(ctx),
         _ => {
             panic!(
                 "handler not presents for EC_{} @ipa 0x{:x}, @pc 0x{:x}, @esr 0x{:x},
@@ -110,6 +112,24 @@ pub fn handle_exception_sync(ctx: &mut TrapFrame) -> AxResult<AxVCpuExitReason> 
             );
         }
     }
+}
+
+fn handle_system_register(context_frame: &mut TrapFrame) -> AxResult<AxVCpuExitReason> {
+    let iss = ESR_EL2.read(ESR_EL2::ISS);
+    let addr = exception_sysreg_addr(iss.try_into().unwrap());
+    let elr = context_frame.exception_pc();
+    let val = elr + exception_next_instruction_step();
+    let write = exception_sysreg_direction_write(iss);
+    let reg = exception_sysreg_gpr(iss) as usize;
+    context_frame.set_exception_pc(val);
+    // TODO! gicv3 ICC_SRE_ADDR / ICC_SGIR_ADDR
+    if write {
+        return Ok(AxVCpuExitReason::SysRegWrite {
+            addr,
+            value: context_frame.gpr(reg as usize) as u64,
+        });
+    }
+    Ok(AxVCpuExitReason::SysRegRead { addr, reg })
 }
 
 fn handle_data_abort(context_frame: &mut TrapFrame) -> AxResult<AxVCpuExitReason> {
@@ -232,11 +252,14 @@ fn dispatch_irq() {
 #[no_mangle]
 unsafe extern "C" fn vmexit_trampoline() {
     core::arch::asm!(
+        "mov x6, x0", // Save the exit reason.
         "bl {vcpu_running}", // Check if vcpu is running.
+        "mov x7, x0", // Save the return value of vcpu_running.
+        "mov x0, x6", // Restore the exit reason.
         // If vcpu_running returns true, jump to `return_run_guest`,
         // after that the control flow is handed back to Aarch64VCpu.run(),
         // simulating the normal return of the `run_guest` function.
-        "cbnz x0, {return_run_guest}",
+        "cbnz x7, {return_run_guest}",
         // If vcpu_running returns false, there is no active vcpu running,
         // jump to `dispatch_irq`.
         "bl {dispatch_irq}",

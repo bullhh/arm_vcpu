@@ -138,6 +138,10 @@ impl<H: AxVCpuHal> axvcpu::AxArchVCpu for Aarch64VCpu<H> {
     fn set_gpr(&mut self, idx: usize, val: usize) {
         self.ctx.set_gpr(idx, val);
     }
+
+    fn inject_interrupt(&mut self, vector: usize) -> AxResult {
+        Ok(())
+    }
 }
 
 // Private function
@@ -168,7 +172,13 @@ impl<H: AxVCpuHal> Aarch64VCpu<H> {
             + VTCR_EL2::SL0.val(0b01)
             + VTCR_EL2::T0SZ.val(64 - 39))
         .into();
-        self.guest_system_regs.hcr_el2 = (HCR_EL2::VM::Enable + HCR_EL2::RW::EL1IsAarch64).into();
+        self.guest_system_regs.hcr_el2 = (HCR_EL2::VM::Enable
+            + HCR_EL2::RW::EL1IsAarch64
+            + HCR_EL2::IMO::EnableVirtualIRQ
+            + HCR_EL2::FMO::EnableVirtualFIQ
+            + HCR_EL2::TSC::EnableTrapEl1SmcToEl2
+            + HCR_EL2::RW::EL1IsAarch64)
+            .into();
         // self.system_regs.hcr_el2 |= 1<<27;
         // + HCR_EL2::IMO::EnableVirtualIRQ).into();
         // trap el1 smc to el2
@@ -223,7 +233,13 @@ impl<H: AxVCpuHal> Aarch64VCpu<H> {
         );
 
         // the dummy return value, the real return value is in x0 when `return_run_guest` returns
-        0
+        let exit_reason: usize;
+        core::arch::asm!(
+            "mov {}, x0",
+            out(reg) exit_reason,
+            options(nostack)
+        );
+        exit_reason
     }
 
     /// Restores guest system control registers.
