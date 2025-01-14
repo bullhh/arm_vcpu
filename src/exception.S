@@ -110,7 +110,7 @@ exception_vector_base_vcpu:
     INVALID_EXCP_EL2 3 0
 
     // current EL, with SP_ELx
-    HANDLE_CURRENT_SYNC
+    HANDLE_LOWER_SYNC_VCPU
     HANDLE_CURRENT_IRQ
     INVALID_EXCP_EL2 2 1
     INVALID_EXCP_EL2 3 1
