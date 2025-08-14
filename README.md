@@ -66,3 +66,18 @@ This project is dual-licensed under either:
 
 at your option.
 
+## 依赖阻塞示意
+```mermaid
+graph TD
+    arm_vcpu["arm_vcpu"]
+    axdevice_git["axdevice_base (git) <br> ❌ 阻塞"]
+    axdevice_crate["axdevice_base (crates.io) <br> ✅ 已发布"]
+
+    arm_vcpu -->|git 依赖| axdevice_git
+    arm_vcpu -.->|改为版本依赖后| axdevice_crate
+    axdevice_git -.->|1. 发布到 crates.io| axdevice_crate
+
+    style axdevice_git fill:#ffcccc,stroke:#cc0000
+    style axdevice_crate fill:#ccffcc,stroke:#006600
+
+
