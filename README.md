@@ -66,18 +66,15 @@ This project is dual-licensed under either:
 
 at your option.
 
-## 依赖阻塞示意
-```mermaid
-graph TD
-    arm_vcpu["arm_vcpu"]
-    axdevice_git["axdevice_base (git) <br> ❌ 阻塞"]
-    axdevice_crate["axdevice_base (crates.io) <br> ✅ 已发布"]
+#### 2. **关键模块解析**
 
-    arm_vcpu -->|git 依赖| axdevice_git
-    arm_vcpu -.->|改为版本依赖后| axdevice_crate
-    axdevice_git -.->|1. 发布到 crates.io| axdevice_crate
+|     模块类别     |           代表节点           |            技术功能说明             |
+| :--------------: | :--------------------------: | :---------------------------------: |
+| **核心硬件抽象** |      `x86_64`, `riscv`       |       不同CPU架构的底层适配层       |
+|   **内存管理**   |     `axaddrspace 0.1.0`      | 虚拟地址空间管理模块(0.1.0表示版本) |
+|  **寄存器操作**  | `lock_registers`, `volatile` |   硬件寄存器原子操作与内存映射I/O   |
+|  **序列化系统**  |   `serde`, `winnow 0.6.26`   |     数据序列化框架(含特定版本)      |
+|   **并发控制**   |         `tiny_lock`          |            轻量级锁实现             |
+|  **初始化系统**  |          `lazyinit`          |          延迟初始化管理器           |
 
-    style axdevice_git fill:#ffcccc,stroke:#cc0000
-    style axdevice_crate fill:#ccffcc,stroke:#006600
-
-
+#### 3. **依赖关系技术细节**
